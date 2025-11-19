@@ -1,0 +1,132 @@
+diff --git a/node_modules/wouter/esm/index.js b/node_modules/wouter/esm/index.js
+index c83bc63..8c2df31 100644
+--- a/node_modules/wouter/esm/index.js
++++ b/node_modules/wouter/esm/index.js
+@@ -121,33 +121,33 @@ const matchRoute = (parser, route, path, loose) => {
+ 
+   return $base !== undefined
+     ? [
+-        true,
++      true,
+ 
+-        (() => {
+-          // for regex paths, `keys` will always be false
++      (() => {
++        // for regex paths, `keys` will always be false
+ 
+-          // an object with parameters matched, e.g. { foo: "bar" } for "/:foo"
+-          // we "zip" two arrays here to construct the object
+-          // ["foo"], ["bar"] → { foo: "bar" }
+-          const groups =
+-            keys !== false
+-              ? Object.fromEntries(keys.map((key, i) => [key, matches[i]]))
+-              : result.groups;
++        // an object with parameters matched, e.g. { foo: "bar" } for "/:foo"
++        // we "zip" two arrays here to construct the object
++        // ["foo"], ["bar"] → { foo: "bar" }
++        const groups =
++          keys !== false
++            ? Object.fromEntries(keys.map((key, i) => [key, matches[i]]))
++            : result.groups;
+ 
+-          // convert the array to an instance of object
+-          // this makes it easier to integrate with the existing param implementation
+-          let obj = { ...matches };
++        // convert the array to an instance of object
++        // this makes it easier to integrate with the existing param implementation
++        let obj = { ...matches };
+ 
+-          // merge named capture groups with matches array
+-          groups && Object.assign(obj, groups);
++        // merge named capture groups with matches array
++        groups && Object.assign(obj, groups);
+ 
+-          return obj;
+-        })(),
++        return obj;
++      })(),
+ 
+-        // the third value if only present when parser is in "loose" mode,
+-        // so that we can extract the base path for nested routes
+-        ...(loose ? [$base] : []),
+-      ]
++      // the third value if only present when parser is in "loose" mode,
++      // so that we can extract the base path for nested routes
++      ...(loose ? [$base] : []),
++    ]
+     : [false, null];
+ };
+ 
+@@ -192,7 +192,7 @@ const Router = ({ children, ...props }) => {
+     const option =
+       k === "base"
+         ? /* base is special case, it is appended to the parent's base */
+-          parent[k] + (props[k] || "")
++        parent[k] + (props[k] || "")
+         : props[k] || parent[k];
+ 
+     if (prev === next && option !== next[k]) {
+@@ -223,7 +223,7 @@ const useCachedParams = (value) => {
+   return (prev.current =
+     // Update cache if number of params changed or any value changed
+     Object.keys(value).length !== Object.keys(curr).length ||
+-    Object.entries(value).some(([k, v]) => v !== curr[k])
++      Object.entries(value).some(([k, v]) => v !== curr[k])
+       ? value // Return new value if there are changes
+       : curr); // Return cached value if nothing changed
+ };
+@@ -317,27 +317,44 @@ const Link = forwardRef((props, ref) => {
+   return asChild && isValidElement(children)
+     ? cloneElement(children, { onClick, href })
+     : createElement("a", {
+-        ...restProps,
+-        onClick,
+-        href,
+-        // `className` can be a function to apply the class if this link is active
+-        className: cls?.call ? cls(currentPath === targetPath) : cls,
+-        children,
+-        ref,
+-      });
++      ...restProps,
++      onClick,
++      href,
++      // `className` can be a function to apply the class if this link is active
++      className: cls?.call ? cls(currentPath === targetPath) : cls,
++      children,
++      ref,
++    });
+ });
+ 
+ const flattenChildren = (children) =>
+   Array.isArray(children)
+     ? children.flatMap((c) =>
+-        flattenChildren(c && c.type === Fragment ? c.props.children : c)
+-      )
++      flattenChildren(c && c.type === Fragment ? c.props.children : c)
++    )
+     : [children];
+ 
+ const Switch = ({ children, location }) => {
+   const router = useRouter();
+   const [originalLocation] = useLocationFromRouter(router);
+ 
++  // Collect all route paths to window object
++  if (typeof window !== 'undefined') {
++    if (!window.__WOUTER_ROUTES__) {
++      window.__WOUTER_ROUTES__ = [];
++    }
++
++    const allChildren = flattenChildren(children);
++    allChildren.forEach((element) => {
++      if (isValidElement(element) && element.props.path) {
++        const path = element.props.path;
++        if (!window.__WOUTER_ROUTES__.includes(path)) {
++          window.__WOUTER_ROUTES__.push(path);
++        }
++      }
++    });
++  }
++
+   for (const element of flattenChildren(children)) {
+     let match = 0;
+ 
