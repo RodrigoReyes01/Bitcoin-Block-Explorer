@@ -1,256 +1,314 @@
-import { useRoute } from "wouter";
-import { trpc } from "@/lib/trpc";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, ArrowLeft, Copy, Check } from "lucide-react";
-import { Link } from "wouter";
 import { useState } from "react";
+import { Link, useParams, useLocation } from "wouter";
+import { motion } from "framer-motion";
+import { trpc } from "@/lib/trpc";
+import {
+  Loader2, Copy, Check, ArrowLeft, ArrowRight,
+  Hash, Clock, Layers, Activity, Zap, ChevronRight, Cpu, TrendingUp,
+} from "lucide-react";
 import ThemeToggle from "@/components/ThemeToggle";
 
-export default function BlockDetail() {
-  const [, params] = useRoute("/block/:hash");
+// ─── Constants (identical to Home.tsx) ────────────────────────────────────────
+const RED       = "#e3231b";
+const RED_LIGHT = "#ff7a72";
+
+// ─── Helpers (identical to Home.tsx) ─────────────────────────────────────────
+const fmt       = (n: number | undefined | null) => n != null ? new Intl.NumberFormat().format(n) : "—";
+const shortHash = (h: string | undefined | null, n = 14) => h ? `${h.slice(0, n)}…${h.slice(-6)}` : "—";
+const fmtTime   = (ts: number | undefined | null) =>
+  ts ? new Date(ts * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—";
+const fmtDiff   = (d: number | undefined | null) =>
+  d == null ? "—" : d >= 1e12 ? (d / 1e12).toFixed(2) + " T" : d >= 1e9 ? (d / 1e9).toFixed(2) + " B" : d.toFixed(2);
+
+// ─── Shared Components (same as Home.tsx) ─────────────────────────────────────
+function GlassCard({ children, className = "", style = {} }: {
+  children: React.ReactNode; className?: string; style?: React.CSSProperties;
+}) {
+  return (
+    <div
+      className={`glass rounded-3xl ${className}`}
+      style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.05)", ...style }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function CardHeader({ title, sub, icon }: { title: string; sub?: string; icon: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between mb-5">
+      <div>
+        <h3 className="text-[15px] font-semibold text-foreground">{title}</h3>
+        {sub && <p className="text-[12px] text-muted-foreground mt-0.5">{sub}</p>}
+      </div>
+      <div className="w-8 h-8 rounded-xl flex items-center justify-center"
+        style={{ background: "rgba(227,35,27,0.12)", color: RED }}>
+        {icon}
+      </div>
+    </div>
+  );
+}
+
+function StatTile({ label, value, sub }: { label: string; value: React.ReactNode; sub?: string }) {
+  return (
+    <div className="rounded-2xl px-4 py-3.5"
+      style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+      <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">{label}</div>
+      <div className="text-[15px] font-bold font-mono text-foreground truncate">{value}</div>
+      {sub && <div className="text-[11px] text-muted-foreground mt-0.5">{sub}</div>}
+    </div>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+      className="p-1.5 rounded-lg transition-colors hover:bg-muted/60 shrink-0"
+      style={{ color: copied ? "rgb(52,211,153)" : "var(--color-muted-foreground)" }}
+      title="Copy">
+      {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+    </button>
+  );
+}
 
-  if (!params?.hash) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Block not found</h1>
-          <Link href="/">
-            <a className="text-orange-500 hover:text-orange-600">Back to home</a>
-          </Link>
-        </div>
+// ─── Info row — reusable list item matching Home's list pattern ───────────────
+function InfoRow({ icon, label, value, mono = false }: {
+  icon: React.ReactNode; label: string; value: React.ReactNode; mono?: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-3 px-3 py-2.5 rounded-2xl hover:bg-muted/40 transition-colors">
+      <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+        style={{ background: "rgba(227,35,27,0.10)" }}>
+        <span style={{ color: RED }}>{icon}</span>
       </div>
-    );
-  }
-
-  const blockQuery = trpc.blockchain.getBlock.useQuery({ hash: params.hash });
-  const block = blockQuery.data?.data;
-
-  const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp * 1000).toLocaleString();
-  };
-
-  const formatNumber = (num: number | null | undefined) => {
-    if (num === null || num === undefined) return "—";
-    return new Intl.NumberFormat().format(num);
-  };
-
-  if (blockQuery.isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+      <div className="flex-1 min-w-0">
+        <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{label}</div>
+        <div className={`text-[13px] font-medium text-foreground truncate ${mono ? "font-mono" : ""}`}>{value}</div>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
-  if (!block) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Block not found</h1>
-          <Link href="/">
-            <a className="text-orange-500 hover:text-orange-600">Back to home</a>
-          </Link>
-        </div>
-      </div>
-    );
-  }
+// ══════════════════════════════════════════════════════════════════════════════
+// MAIN PAGE
+// ══════════════════════════════════════════════════════════════════════════════
+export default function BlockDetail() {
+  const params = useParams<{ hash: string }>();
+  const { data, isLoading, error } = trpc.blockchain.getBlock.useQuery(
+    { hash: params.hash ?? "" },
+    { enabled: Boolean(params.hash) }
+  );
+
+  const [, navigate] = useLocation();
+  const block = data?.data as any;
+  // tx can be an array of txid strings OR tx objects depending on verbosity
+  const txList: string[] = Array.isArray(block?.tx)
+    ? block.tx.map((t: any) => (typeof t === "string" ? t : t?.txid ?? ""))
+    : [];
+  const txCount = txList.length || block?.nTx || 0;
+  const sizePct = block?.size ? Math.min((block.size / 1_000_000) * 100, 100) : 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
-      {/* Cabecera */}
-      <header className="border-b bg-white dark:bg-slate-900 shadow-sm">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between mb-4">
-            <Link href="/">
-              <a className="inline-flex items-center gap-2 text-orange-500 hover:text-orange-600">
-                <ArrowLeft className="w-4 h-4" />
-                Back
-              </a>
-            </Link>
-            <ThemeToggle />
+    <div className="min-h-screen bg-background flex flex-col">
+
+      {/* ── Header ── */}
+      <header className="flex items-center gap-4 px-7 py-4 shrink-0"
+        style={{ borderBottom: "1px solid var(--color-border, var(--border))", backdropFilter: "blur(12px)" }}>
+        <Link href="/" className="flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
+            style={{ background: "linear-gradient(135deg, #e3231b 0%, #ff5a4e 100%)", boxShadow: "0 4px 20px rgba(227,35,27,0.5), inset 0 1px 0 rgba(255,255,255,0.2)" }}>
+            <span className="text-white font-bold text-xl leading-none">₿</span>
           </div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
-            Block #{block.height}
-          </h1>
+          <div>
+            <div className="font-semibold text-[15px] text-foreground tracking-tight">BTC Explorer</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">UFM · Mainnet</div>
+          </div>
+        </Link>
+        <Link href="/" className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors ml-2">
+          <ArrowLeft className="w-4 h-4" />
+          <span className="text-[13px] font-medium hidden sm:block">Dashboard</span>
+        </Link>
+        <div className="ml-auto">
+          <ThemeToggle />
         </div>
       </header>
 
-      {/* Contenido principal */}
-      <main className="container mx-auto px-4 py-8">
-        {/* Hash del bloque */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle>Block Hash</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 p-4 rounded-lg">
-              <code className="flex-1 font-mono text-sm text-slate-900 dark:text-white break-all">
-                {block.hash}
-              </code>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => handleCopy(block.hash)}
-              >
-                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      {/* ── Content ── */}
+      <main className="flex-1 px-7 py-7 max-w-5xl mx-auto w-full">
 
-        {/* Cuadrícula de detalles del bloque */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-          {/* Información general */}
-          <Card>
-            <CardHeader>
-              <CardTitle>General Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Height:</span>
-                <span className="font-mono font-semibold text-slate-900 dark:text-white">
-                  {formatNumber(block.height)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Version:</span>
-                <span className="font-mono font-semibold text-slate-900 dark:text-white">
-                  {block.version}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Timestamp:</span>
-                <span className="font-mono text-sm text-slate-900 dark:text-white">
-                  {formatDate(block.time)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Confirmations:</span>
-                <span className="font-mono font-semibold text-slate-900 dark:text-white">
-                  {formatNumber(block.confirmations)}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
+        {isLoading && (
+          <div className="flex justify-center items-center h-64">
+            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          </div>
+        )}
 
-          {/* Información de minería */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Mining Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Difficulty:</span>
-                <span className="font-mono font-semibold text-slate-900 dark:text-white">
-                  {String(block.difficulty)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Nonce:</span>
-                <span className="font-mono font-semibold text-slate-900 dark:text-white">
-                  {formatNumber(block.nonce)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Bits:</span>
-                <span className="font-mono font-semibold text-slate-900 dark:text-white">
-                  {block.bits}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Weight:</span>
-                <span className="font-mono font-semibold text-slate-900 dark:text-white">
-                  {formatNumber(block.weight)} WU
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        {error && (
+          <GlassCard className="p-8 text-center">
+            <p className="text-muted-foreground">Block not found.</p>
+          </GlassCard>
+        )}
 
-        {/* Tamaño del bloque y transacciones */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-          {/* Información de tamaño */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Block Size</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Total Size:</span>
-                <span className="font-mono font-semibold text-slate-900 dark:text-white">
-                  {formatNumber(block.size)} bytes
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Stripped Size:</span>
-                <span className="font-mono font-semibold text-slate-900 dark:text-white">
-                  {block.strippedsize ? formatNumber(Number(block.strippedsize)) : "—"} bytes
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Transactions:</span>
-                <span className="font-mono font-semibold text-slate-900 dark:text-white">
-                  {formatNumber(block.nTx)}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
+        {/* Breadcrumb */}
+        {block && (
+          <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground mb-5">
+            <Link href="/" className="hover:text-foreground transition-colors">Dashboard</Link>
+            <ChevronRight className="w-3 h-3 shrink-0" />
+            <span className="text-foreground font-mono">Block #{fmt(block.height)}</span>
+          </div>
+        )}
 
-          {/* Información de Merkle y cadena */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Chain Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <span className="text-slate-600 dark:text-slate-400 block mb-2">Merkle Root:</span>
-                <code className="bg-slate-100 dark:bg-slate-800 p-2 rounded text-xs font-mono text-slate-900 dark:text-white break-all">
-                  {block.merkleroot}
-                </code>
-              </div>
-              {block.previousblockhash && (
-                <div>
-                  <span className="text-slate-600 dark:text-slate-400 block mb-2">Previous Block:</span>
-                  <Link href={`/block/${block.previousblockhash}`}>
-                    <a className="text-orange-500 hover:text-orange-600 font-mono text-xs truncate block">
-                      {block.previousblockhash}
-                    </a>
-                  </Link>
+        {block && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.18 }}
+            className="space-y-5"
+          >
+
+            {/* ── Block Hash Hero ── */}
+            <GlassCard className="p-6"
+              style={{ boxShadow: "0 8px 32px rgba(227,35,27,0.12), inset 0 1px 0 rgba(255,255,255,0.06)" }}>
+
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.08em]">
+                  Block Hash
+                </span>
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center"
+                  style={{ background: "rgba(227,35,27,0.12)", color: RED }}>
+                  <Layers className="w-4 h-4" />
                 </div>
+              </div>
+
+              <div className="flex items-start gap-2 mb-4">
+                <span className="text-[13px] font-mono text-foreground break-all leading-relaxed flex-1 select-all">
+                  {block.hash}
+                </span>
+                <CopyButton text={block.hash} />
+              </div>
+
+              {/* Size progress bar */}
+              <div className="mb-5">
+                <div className="flex justify-between text-[11px] text-muted-foreground mb-1.5">
+                  <span>Block size</span>
+                  <span>{(block.size / 1e3).toFixed(1)} KB of ~1 MB limit</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-muted/60 overflow-hidden">
+                  <div className="h-full rounded-full transition-all"
+                    style={{ width: `${sizePct}%`, background: `linear-gradient(to right, ${RED}, ${RED_LIGHT})` }} />
+                </div>
+              </div>
+
+              {/* Quick stats */}
+              <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+                <StatTile label="Height"        value={block.height != null ? `#${fmt(block.height)}` : "—"} sub="Mainnet" />
+                <StatTile label="Confirmations" value={block.confirmations != null ? fmt(block.confirmations) : "—"} sub="Confirmations" />
+                <StatTile label="Transactions"  value={fmt(txCount)} sub="In this block" />
+                <StatTile label="Weight"        value={block.weight ? `${(block.weight / 1e6).toFixed(3)} MWU` : "—"} sub="Block weight" />
+              </div>
+            </GlassCard>
+
+            {/* ── Block Info + Mining Info ── */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+
+              <GlassCard className="p-6">
+                <CardHeader title="Block Info" icon={<Layers className="w-4 h-4" />} />
+                <div className="space-y-1">
+                  <InfoRow icon={<Clock    className="w-3.5 h-3.5" />} label="Timestamp"   value={fmtTime(block.time)} />
+                  <InfoRow icon={<Hash     className="w-3.5 h-3.5" />} label="Merkle Root" value={shortHash(block.merkleroot, 18)} mono />
+                  <InfoRow icon={<Activity className="w-3.5 h-3.5" />} label="Version"     value={block.version != null ? `0x${(block.version >>> 0).toString(16).toUpperCase()}` : "—"} mono />
+                  <InfoRow icon={<Layers   className="w-3.5 h-3.5" />} label="Size"        value={`${fmt(block.size)} bytes`} />
+                  <InfoRow icon={<Zap      className="w-3.5 h-3.5" />} label="Median Time" value={fmtTime(block.mediantime)} />
+                </div>
+              </GlassCard>
+
+              <GlassCard className="p-6">
+                <CardHeader title="Mining Info" icon={<Cpu className="w-4 h-4" />} />
+                <div className="space-y-1">
+                  <InfoRow icon={<TrendingUp className="w-3.5 h-3.5" />} label="Difficulty" value={fmtDiff(block.difficulty)} />
+                  <InfoRow icon={<Hash       className="w-3.5 h-3.5" />} label="Bits"       value={block.bits} mono />
+                  <InfoRow icon={<Cpu        className="w-3.5 h-3.5" />} label="Nonce"      value={fmt(block.nonce)} />
+                  <InfoRow icon={<Activity   className="w-3.5 h-3.5" />} label="Chain Work" value={block.chainwork ? shortHash(block.chainwork, 16) : "—"} mono />
+                </div>
+              </GlassCard>
+            </div>
+
+            {/* ── Prev / Next navigation ── */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {block.previousblockhash && (
+                <GlassCard className="p-4 hover:scale-[1.02] transition-transform cursor-pointer group"
+                  onClick={() => navigate(`/block/${block.previousblockhash}`)}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+                      style={{ background: "rgba(227,35,27,0.10)" }}>
+                      <ArrowLeft className="w-3.5 h-3.5 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">Previous Block</div>
+                      <div className="text-[12px] font-mono text-primary truncate">{shortHash(block.previousblockhash)}</div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-60 transition-opacity shrink-0 rotate-180" />
+                  </div>
+                </GlassCard>
               )}
               {block.nextblockhash && (
-                <div>
-                  <span className="text-slate-600 dark:text-slate-400 block mb-2">Next Block:</span>
-                  <Link href={`/block/${block.nextblockhash}`}>
-                    <a className="text-orange-500 hover:text-orange-600 font-mono text-xs truncate block">
-                      {block.nextblockhash}
-                    </a>
-                  </Link>
-                </div>
+                <GlassCard className="p-4 hover:scale-[1.02] transition-transform cursor-pointer group"
+                  onClick={() => navigate(`/block/${block.nextblockhash}`)}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+                      style={{ background: "rgba(227,35,27,0.10)" }}>
+                      <ArrowRight className="w-3.5 h-3.5 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">Next Block</div>
+                      <div className="text-[12px] font-mono text-primary truncate">{shortHash(block.nextblockhash)}</div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-60 transition-opacity shrink-0" />
+                  </div>
+                </GlassCard>
               )}
-            </CardContent>
-          </Card>
-        </div>
+            </div>
 
-        {/* Trabajo de cadena */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Chainwork</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <code className="bg-slate-100 dark:bg-slate-800 p-4 rounded text-xs font-mono text-slate-900 dark:text-white break-all block">
-              {block.chainwork}
-            </code>
-          </CardContent>
-        </Card>
+            {/* ── Transactions list ── */}
+            {txList.length > 0 && (
+              <GlassCard className="p-6">
+                <CardHeader
+                  title="Transactions"
+                  sub={`${fmt(txList.length)} transaction${txList.length !== 1 ? "s" : ""} in this block`}
+                  icon={<Activity className="w-4 h-4" />}
+                />
+                <div className="space-y-1">
+                  {txList.map((txid: string, i: number) => (
+                    <Link key={txid} href={`/tx/${txid}`}
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-2xl hover:bg-muted/40 transition-colors group cursor-pointer">
+                      <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+                        style={{ background: "rgba(227,35,27,0.10)" }}>
+                        <Activity className="w-3.5 h-3.5 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[13px] font-mono font-medium text-foreground truncate" title={txid}>
+                          {txid.substring(0, 32)}…
+                        </div>
+                        {i === 0 && (
+                          <span className="inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded-full mt-0.5"
+                            style={{ background: "rgba(52,211,153,0.12)", color: "rgb(52,211,153)" }}>
+                            Coinbase
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[11px] text-muted-foreground font-mono hidden md:block">#{i}</span>
+                        <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-60 transition-opacity" />
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </GlassCard>
+            )}
+
+          </motion.div>
+        )}
       </main>
     </div>
   );
