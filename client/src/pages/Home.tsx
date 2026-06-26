@@ -10,12 +10,13 @@ import { Input } from "@/components/ui/input";
 import {
   Loader2, Search, TrendingUp, Users, Zap, Layers,
   Activity, LayoutDashboard, Wifi, ChevronRight, Cpu, Globe, DollarSign,
+  Coins,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import ThemeToggle from "@/components/ThemeToggle";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type View = "dashboard" | "blocks" | "transactions" | "mempool" | "network";
+type View = "dashboard" | "blocks" | "transactions" | "mempool" | "network" | "market";
 interface BlockchainInfo { chain: string; blocks: number; difficulty: number; mediantime: number; verificationprogress: number; }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -24,6 +25,7 @@ const NAV: { icon: React.ReactNode; label: string; view: View }[] = [
   { icon: <Layers className="w-[18px] h-[18px]" />,          label: "Blocks",       view: "blocks" },
   { icon: <Activity className="w-[18px] h-[18px]" />,        label: "Transactions", view: "transactions" },
   { icon: <Zap className="w-[18px] h-[18px]" />,             label: "Mempool",      view: "mempool" },
+  { icon: <DollarSign className="w-[18px] h-[18px]" />,      label: "Market",       view: "market" },
   { icon: <Wifi className="w-[18px] h-[18px]" />,            label: "Network",      view: "network" },
 ];
 
@@ -287,60 +289,6 @@ function DashboardView({ blockchainInfo, recentBlocks, recentTxs, networkInfo, m
             </motion.div>
           )}
         </GlassCard>
-      </div>
-
-      {/* ── Price Chart + Satoshi Converter ── */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-
-        {/* 30-day price chart */}
-        <GlassCard className="p-6 xl:col-span-2">
-          <CardHeader
-            title="BTC Price — 30 Days"
-            sub={btcPrice ? `$${new Intl.NumberFormat("en-US").format(btcPrice.usd)} · ${btcPrice.change24h >= 0 ? "▲" : "▼"} ${Math.abs(btcPrice.change24h).toFixed(2)}% (24h)` : "Loading…"}
-            icon={<TrendingUp className="w-4 h-4" />}
-            tooltip="Bitcoin's USD price over the last 30 days, fetched live from CoinGecko. The percentage shown is the 24-hour price change. This data comes from public market data, not the Bitcoin node."
-          />
-          {priceHistory.length === 0 ? <Loading /> : (
-            <ResponsiveContainer width="100%" height={180}>
-              <AreaChart data={priceHistory} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor={RED} stopOpacity={0.3} />
-                    <stop offset="95%" stopColor={RED} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} vertical={false} />
-                <XAxis dataKey="t" tick={{ fill: AXIS_COLOR, fontSize: 10 }} axisLine={false} tickLine={false} interval={4} />
-                <YAxis
-                  tick={{ fill: AXIS_COLOR, fontSize: 10 }} axisLine={false} tickLine={false}
-                  tickFormatter={v => `$${(v/1000).toFixed(0)}k`}
-                  domain={["auto", "auto"]}
-                />
-                <Tooltip
-                  {...TOOLTIP_STYLE}
-                  formatter={(v: any) => [`$${new Intl.NumberFormat("en-US").format(v)}`, "Price"]}
-                />
-                <Area type="monotone" dataKey="price" stroke={RED} strokeWidth={2}
-                  fill="url(#priceGrad)" dot={false} activeDot={{ r: 4, fill: RED }} />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
-        </GlassCard>
-
-        {/* Satoshi converter */}
-        <GlassCard className="p-6">
-          <CardHeader title="Converter" sub="Live BTC price" icon={<Zap className="w-4 h-4" />} tooltip="Convert between Satoshis (the smallest unit of Bitcoin), BTC, and US Dollars in real time. 1 BTC equals 100,000,000 Satoshis. Type in any field and the others update automatically." />
-          <SatoshiConverter btcPrice={btcPrice} />
-        </GlassCard>
-      </div>
-
-      {/* ── Currently Mining + Halving ── */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-        <GlassCard className="p-6">
-          <CardHeader title="Currently Mining" sub="Next block estimate" icon={<Cpu className="w-4 h-4" />} tooltip="A live estimate of the next Bitcoin block being mined right now. Shows how long ago the last block was found and how many transactions are waiting to be included." />
-          <CurrentlyMining mempoolInfo={mempoolInfo} recentBlocks={recentBlocks} />
-        </GlassCard>
-        <HalvingCard blockHeight={blockchainInfo?.blocks} />
       </div>
 
     </div>
@@ -982,6 +930,236 @@ function CurrentlyMining({ mempoolInfo, recentBlocks }: { mempoolInfo: any; rece
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// VIEW: MARKET
+// ══════════════════════════════════════════════════════════════════════════════
+function MarketView({ blockchainInfo, mempoolInfo, btcPrice, priceHistory, recentBlocks }: any) {
+  const fmt = (n: number) => new Intl.NumberFormat("en-US").format(n);
+  const halvingNum  = blockchainInfo ? Math.floor(blockchainInfo.blocks / 210000) + 1 : 5;
+  const nextHalving = halvingNum * 210000;
+  const remaining   = blockchainInfo ? nextHalving - blockchainInfo.blocks : null;
+  const currentReward = 3.125 / Math.pow(2, halvingNum - 4);
+
+  // Approximate circulating supply from block height
+  const circSupply = useMemo(() => {
+    if (!blockchainInfo) return null;
+    let supply = 0, reward = 50, h = blockchainInfo.blocks;
+    for (let era = 0; era < 33; era++) {
+      const eraStart = era * 210000, eraEnd = eraStart + 210000;
+      if (h <= eraStart) break;
+      supply += Math.min(h, eraEnd) > eraStart ? (Math.min(h, eraEnd) - eraStart) * reward : 0;
+      reward /= 2;
+    }
+    return supply;
+  }, [blockchainInfo]);
+
+  const marketCap = btcPrice && circSupply ? btcPrice.usd * circSupply : null;
+  const minFeeRate = mempoolInfo ? (mempoolInfo.mempoolminfee * 1e8).toFixed(1) : null;
+
+  const HALVINGS = [
+    { n: 1, block: 210000,  date: "Nov 28, 2012", before: 50,    after: 25,    price: "$12" },
+    { n: 2, block: 420000,  date: "Jul 9, 2016",  before: 25,    after: 12.5,  price: "$650" },
+    { n: 3, block: 630000,  date: "May 11, 2020", before: 12.5,  after: 6.25,  price: "$8,787" },
+    { n: 4, block: 840000,  date: "Apr 19, 2024", before: 6.25,  after: 3.125, price: "$63,000" },
+    { n: 5, block: 1050000, date: "Est. Apr 2028", before: 3.125, after: 1.5625, price: "?" },
+  ];
+
+  return (
+    <div className="space-y-6">
+
+      {/* ── Top KPI row ── */}
+      <motion.div className="grid grid-cols-2 xl:grid-cols-4 gap-4"
+        variants={STAGGER.container} initial="hidden" animate="show">
+        {[
+          { label: "BTC Price",       value: btcPrice ? `$${fmt(Math.round(btcPrice.usd))}` : "—",                           sub: btcPrice ? `${btcPrice.change24h >= 0 ? "▲" : "▼"} ${Math.abs(btcPrice.change24h).toFixed(2)}% (24h)` : "loading" },
+          { label: "Market Cap",      value: marketCap ? `$${(marketCap / 1e12).toFixed(2)}T` : "—",                        sub: "price × circulating supply" },
+          { label: "Circ. Supply",    value: circSupply ? `${(circSupply / 1e6).toFixed(3)}M` : "—",                        sub: "of 21,000,000 BTC total" },
+          { label: "Block Reward",    value: `${currentReward.toFixed(4)} BTC`,                                              sub: `+ fees · Halving #${halvingNum - 1} epoch` },
+        ].map((s, i) => (
+          <motion.div key={s.label} variants={STAGGER.item}>
+            <GlassCard className="p-5 h-full cursor-default">
+              <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.12em] mb-4">{s.label}</div>
+              <div className={`text-[1.9rem] font-semibold leading-none tracking-tight tabular-nums ${i === 0 ? "text-gradient-red" : "text-foreground"}`}>{s.value}</div>
+              <div className="mt-2 text-[11px] text-muted-foreground">{s.sub}</div>
+            </GlassCard>
+          </motion.div>
+        ))}
+      </motion.div>
+
+      {/* ── Price Chart + Converter ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+        <GlassCard className="p-6 xl:col-span-2">
+          <CardHeader
+            title="BTC Price — 30 Days"
+            sub={btcPrice ? `$${new Intl.NumberFormat("en-US").format(btcPrice.usd)} · ${btcPrice.change24h >= 0 ? "▲" : "▼"} ${Math.abs(btcPrice.change24h).toFixed(2)}% (24h)` : "Loading…"}
+            icon={<TrendingUp className="w-4 h-4" />}
+            tooltip="Bitcoin's USD price over the last 30 days, fetched live from CoinGecko."
+          />
+          {priceHistory.length === 0 ? <Loading /> : (
+            <ResponsiveContainer width="100%" height={180}>
+              <AreaChart data={priceHistory} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="priceGrad2" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor={RED} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={RED} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} vertical={false} />
+                <XAxis dataKey="t" tick={{ fill: AXIS_COLOR, fontSize: 10 }} axisLine={false} tickLine={false} interval={4} />
+                <YAxis tick={{ fill: AXIS_COLOR, fontSize: 10 }} axisLine={false} tickLine={false}
+                  tickFormatter={v => `$${(v/1000).toFixed(0)}k`} domain={["auto", "auto"]} />
+                <Tooltip {...TOOLTIP_STYLE} formatter={(v: any) => [`$${new Intl.NumberFormat("en-US").format(v)}`, "Price"]} />
+                <Area type="monotone" dataKey="price" stroke={RED} strokeWidth={2}
+                  fill="url(#priceGrad2)" dot={false} activeDot={{ r: 4, fill: RED }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </GlassCard>
+        <GlassCard className="p-6">
+          <CardHeader title="Converter" sub="Live BTC price" icon={<Zap className="w-4 h-4" />}
+            tooltip="Convert between Satoshis, BTC, and USD in real time. 1 BTC = 100,000,000 sats." />
+          <SatoshiConverter btcPrice={btcPrice} />
+        </GlassCard>
+      </div>
+
+      {/* ── Currently Mining + Halving ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+        <GlassCard className="p-6">
+          <CardHeader title="Currently Mining" sub="Next block estimate" icon={<Cpu className="w-4 h-4" />}
+            tooltip="Live estimate of the next Bitcoin block being mined right now." />
+          <CurrentlyMining mempoolInfo={mempoolInfo} recentBlocks={recentBlocks} />
+        </GlassCard>
+        <HalvingCard blockHeight={blockchainInfo?.blocks} />
+      </div>
+
+      {/* ── Supply curve ── */}
+      <GlassCard className="p-6">
+        <CardHeader title="Supply Distribution" sub="Circulating vs remaining vs lost (est.)" icon={<Coins className="w-4 h-4" />}
+          tooltip="Visual breakdown of all 21 million Bitcoin: mined so far, still to be mined, and estimated lost coins." />
+        <div className="mt-2 space-y-3">
+          {[
+            { label: "Mined & circulating",  pct: circSupply ? (circSupply / 21e6) * 100 : 94.5, color: RED,                    value: circSupply ? `${(circSupply/1e6).toFixed(3)}M BTC` : "~19.85M BTC" },
+            { label: "Lost / unspendable",   pct: 5.7,                                            color: "rgba(251,191,36,1)",   value: "~1.2M BTC (est.)" },
+            { label: "Still to be mined",    pct: circSupply ? ((21e6 - circSupply) / 21e6) * 100 : 5.5, color: "rgba(99,102,241,1)", value: circSupply ? `${((21e6 - circSupply)/1e6).toFixed(3)}M BTC` : "~1.15M BTC" },
+          ].map(s => (
+            <div key={s.label}>
+              <div className="flex justify-between text-[12px] mb-1.5">
+                <span className="text-muted-foreground font-medium">{s.label}</span>
+                <span className="font-semibold text-foreground tabular-nums">{s.value}</span>
+              </div>
+              <div className="h-2 rounded-full bg-muted/40 overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-700"
+                  style={{ width: `${s.pct.toFixed(1)}%`, background: s.color }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </GlassCard>
+
+      {/* ── Halving history table ── */}
+      <GlassCard className="p-6">
+        <CardHeader title="Halving History" sub="Every 210,000 blocks · ~4 years" icon={<Layers className="w-4 h-4" />}
+          tooltip="Each halving cuts the block reward in half, reducing new Bitcoin supply. This is Bitcoin's built-in monetary policy." />
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr className="text-muted-foreground text-[10px] uppercase tracking-[0.08em]">
+                <th className="text-left py-2 pb-3 font-semibold">Halving</th>
+                <th className="text-left py-2 pb-3 font-semibold">Block</th>
+                <th className="text-left py-2 pb-3 font-semibold">Date</th>
+                <th className="text-right py-2 pb-3 font-semibold">Reward Before</th>
+                <th className="text-right py-2 pb-3 font-semibold">Reward After</th>
+                <th className="text-right py-2 pb-3 font-semibold">BTC Price</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/40">
+              {HALVINGS.map(h => {
+                const isCurrent = h.n === halvingNum;
+                const isPast = blockchainInfo && h.block <= blockchainInfo.blocks;
+                return (
+                  <tr key={h.n} className={isCurrent ? "text-foreground" : isPast ? "text-muted-foreground" : "text-muted-foreground opacity-60"}>
+                    <td className="py-3 font-semibold flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold"
+                        style={{ background: isCurrent ? "rgba(227,35,27,0.15)" : "rgba(255,255,255,0.05)", color: isCurrent ? RED : "inherit" }}>
+                        #{h.n}
+                      </span>
+                      {isCurrent && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: "rgba(227,35,27,0.12)", color: RED }}>CURRENT</span>}
+                    </td>
+                    <td className="py-3 font-mono">{fmt(h.block)}</td>
+                    <td className="py-3">{h.date}</td>
+                    <td className="py-3 text-right font-mono">{h.before} BTC</td>
+                    <td className="py-3 text-right font-mono font-semibold" style={{ color: isCurrent ? RED : "inherit" }}>{h.after} BTC</td>
+                    <td className="py-3 text-right font-mono">{h.price}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </GlassCard>
+
+      {/* ── Fee + mempool economics ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+        <GlassCard className="p-6">
+          <CardHeader title="Fee Economics" sub="Current mempool fee environment" icon={<Zap className="w-4 h-4" />}
+            tooltip="The current fee rates required to get your transaction confirmed at different speeds." />
+          <div className="mt-3 space-y-3">
+            {[
+              { label: "Minimum relay fee",    rate: minFeeRate ? `${minFeeRate} sat/vB` : "—",                         note: "floor set by the network",       color: "rgba(52,211,153,1)" },
+              { label: "Est. next block",      rate: minFeeRate ? `~${(parseFloat(minFeeRate) * 1.5).toFixed(1)} sat/vB` : "—", note: "~10 min confirmation",    color: RED },
+              { label: "Mempool pending",      rate: mempoolInfo ? `${fmt(mempoolInfo.size)} txs` : "—",                note: `${mempoolInfo ? (mempoolInfo.bytes/1e6).toFixed(1) : "—"} MB queued`, color: "rgba(251,191,36,1)" },
+              { label: "Mempool max memory",   rate: mempoolInfo ? `${(mempoolInfo.maxmempool/1e6).toFixed(0)} MB` : "—", note: "node will evict below this",  color: "rgba(99,102,241,1)" },
+            ].map(s => (
+              <div key={s.label} className="flex items-center justify-between py-2.5 border-b border-border/30 last:border-0">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
+                  <div>
+                    <div className="text-[12px] font-medium text-foreground">{s.label}</div>
+                    <div className="text-[10px] text-muted-foreground">{s.note}</div>
+                  </div>
+                </div>
+                <span className="text-[13px] font-bold tabular-nums text-foreground">{s.rate}</span>
+              </div>
+            ))}
+          </div>
+        </GlassCard>
+
+        <GlassCard className="p-6">
+          <CardHeader title="Block Economics" sub="Revenue per block (avg)" icon={<DollarSign className="w-4 h-4" />}
+            tooltip="How miners earn money: the fixed block subsidy plus all transaction fees included in each block." />
+          <div className="mt-3 space-y-3">
+            {(() => {
+              const avgFees = recentBlocks.length > 0
+                ? recentBlocks.reduce((a: number, b: any) => a + (b.nTx || 0), 0) / recentBlocks.length * 0.00005
+                : null;
+              const subsidyUsd = btcPrice ? currentReward * btcPrice.usd : null;
+              const feesUsd = btcPrice && avgFees ? avgFees * btcPrice.usd : null;
+              const totalUsd = subsidyUsd && feesUsd ? subsidyUsd + feesUsd : null;
+              return [
+                { label: "Block subsidy",      btc: `${currentReward.toFixed(4)} BTC`, usd: subsidyUsd ? `$${fmt(Math.round(subsidyUsd))}` : "—", color: RED },
+                { label: "Avg tx fees (est.)", btc: avgFees ? `~${avgFees.toFixed(4)} BTC` : "—",    usd: feesUsd ? `~$${fmt(Math.round(feesUsd))}` : "—", color: "rgba(251,191,36,1)" },
+                { label: "Total block reward", btc: avgFees ? `~${(currentReward + avgFees).toFixed(4)} BTC` : "—", usd: totalUsd ? `~$${fmt(Math.round(totalUsd))}` : "—", color: "rgba(52,211,153,1)" },
+              ].map(s => (
+                <div key={s.label} className="flex items-center justify-between py-2.5 border-b border-border/30 last:border-0">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
+                    <span className="text-[12px] font-medium text-foreground">{s.label}</span>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[13px] font-bold tabular-nums text-foreground">{s.btc}</div>
+                    <div className="text-[11px] text-muted-foreground">{s.usd}</div>
+                  </div>
+                </div>
+              ));
+            })()}
+          </div>
+        </GlassCard>
+      </div>
+
+    </div>
+  );
+}
+
 export default function Home() {
   const [activeView, setActiveView] = useState<View>("dashboard");
   const [searchQuery, setSearchQuery]   = useState("");
@@ -1175,6 +1353,7 @@ export default function Home() {
               {activeView === "transactions" && <TransactionsView recentTxs={recentTxs} isLoading={recentTxsQ.isLoading} />}
               {activeView === "mempool"      && <MempoolView mempoolInfo={mempoolInfo} isLoading={mempoolInfoQ.isLoading} />}
               {activeView === "network"      && <NetworkView networkInfo={networkInfo} peerInfo={peerInfo} isLoading={networkInfoQ.isLoading || peerInfoQ.isLoading} />}
+              {activeView === "market"       && <MarketView blockchainInfo={blockchainInfo} mempoolInfo={mempoolInfo} btcPrice={btcPrice} priceHistory={priceHistory} recentBlocks={recentBlocks} />}
             </motion.div>
           </AnimatePresence>
         </main>
