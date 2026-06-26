@@ -63,17 +63,44 @@ function GlassCard({ children, className = "", style = {} }: {
   );
 }
 
-function CardHeader({ title, sub, icon }: { title: string; sub?: string; icon: React.ReactNode }) {
+function IconTooltip({ icon, tooltip, size = "sm" }: { icon: React.ReactNode; tooltip: string; size?: "sm" | "md" }) {
+  const dim = size === "md" ? "w-8 h-8 rounded-xl" : "w-7 h-7 rounded-lg";
+  return (
+    <div className="relative group shrink-0">
+      <div className={`${dim} flex items-center justify-center cursor-help`}
+        style={{ background: "rgba(227,35,27,0.10)", color: RED }}>
+        {icon}
+      </div>
+      <div className="absolute right-0 top-full mt-2 w-60 z-50 pointer-events-none
+        opacity-0 group-hover:opacity-100 transition-opacity duration-200 delay-100">
+        <div className="rounded-xl p-3 text-[12px] leading-relaxed"
+          style={{
+            background: "rgba(10, 18, 36, 0.96)",
+            border: "1px solid rgba(255,255,255,0.10)",
+            backdropFilter: "blur(20px)",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(227,35,27,0.08)",
+            color: "rgba(255,255,255,0.88)",
+          }}>
+          {tooltip}
+        </div>
+        <div className="absolute right-3 -top-1.5 w-3 h-3 rotate-45 rounded-sm"
+          style={{ background: "rgba(10, 18, 36, 0.96)", border: "1px solid rgba(255,255,255,0.10)", borderBottom: "none", borderRight: "none" }} />
+      </div>
+    </div>
+  );
+}
+
+function CardHeader({ title, sub, icon, tooltip }: { title: string; sub?: string; icon: React.ReactNode; tooltip?: string }) {
   return (
     <div className="flex items-center justify-between mb-5">
       <div>
         <h3 className="text-[13px] font-semibold text-foreground uppercase tracking-[0.08em]">{title}</h3>
         {sub && <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>}
       </div>
-      <div className="w-7 h-7 rounded-lg flex items-center justify-center"
-        style={{ background: "rgba(227,35,27,0.10)", color: RED }}>
-        {icon}
-      </div>
+      {tooltip
+        ? <IconTooltip icon={icon} tooltip={tooltip} size="sm" />
+        : <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(227,35,27,0.10)", color: RED }}>{icon}</div>
+      }
     </div>
   );
 }
@@ -170,10 +197,10 @@ function HalvingCard({ blockHeight }: { blockHeight: number | undefined }) {
 // ══════════════════════════════════════════════════════════════════════════════
 function DashboardView({ blockchainInfo, recentBlocks, recentTxs, networkInfo, mempoolInfo, maxTx, isLoading, btcPrice, priceHistory }: any) {
   const stats = [
-    { label: "Block Height", raw: blockchainInfo?.blocks,          value: blockchainInfo ? fmt(blockchainInfo.blocks) : "—",          sub: "Mainnet",          icon: <Layers className="w-5 h-5" /> },
-    { label: "Difficulty",   raw: null,                            value: blockchainInfo ? fmtDiff(blockchainInfo.difficulty) : "—",   sub: "Current epoch",    icon: <TrendingUp className="w-5 h-5" /> },
-    { label: "Peers",        raw: networkInfo?.connections,        value: networkInfo ? String(networkInfo.connections) : "—",         sub: networkInfo?.networkactive ? "Network active" : "Offline", icon: <Users className="w-5 h-5" /> },
-    { label: "Mempool",      raw: mempoolInfo?.size,               value: mempoolInfo ? fmt(mempoolInfo.size) : "—",                   sub: mempoolInfo ? `${(mempoolInfo.bytes/1e6).toFixed(1)} MB pending` : "—", icon: <Zap className="w-5 h-5" /> },
+    { label: "Block Height", raw: blockchainInfo?.blocks,   value: blockchainInfo ? fmt(blockchainInfo.blocks) : "—",        sub: "Mainnet",          icon: <Layers className="w-5 h-5" />,     tooltip: "The total number of blocks ever added to the Bitcoin blockchain. Each block is like a page in a permanent ledger. A new one is added roughly every 10 minutes." },
+    { label: "Difficulty",   raw: null,                     value: blockchainInfo ? fmtDiff(blockchainInfo.difficulty) : "—", sub: "Current epoch",    icon: <TrendingUp className="w-5 h-5" />, tooltip: "How hard it is for miners to find the next valid block. Bitcoin automatically adjusts this every 2,016 blocks to keep the average block time close to 10 minutes." },
+    { label: "Peers",        raw: networkInfo?.connections, value: networkInfo ? String(networkInfo.connections) : "—",       sub: networkInfo?.networkactive ? "Network active" : "Offline", icon: <Users className="w-5 h-5" />, tooltip: "The number of other Bitcoin nodes your node is currently connected to. More peers means better connectivity and a more accurate view of the network." },
+    { label: "Mempool",      raw: mempoolInfo?.size,        value: mempoolInfo ? fmt(mempoolInfo.size) : "—",                 sub: mempoolInfo ? `${(mempoolInfo.bytes/1e6).toFixed(1)} MB pending` : "—", icon: <Zap className="w-5 h-5" />, tooltip: "Transactions that have been broadcast to the network but haven't been included in a block yet. Think of it as a waiting room for pending Bitcoin transfers." },
   ];
 
   return (
@@ -187,7 +214,7 @@ function DashboardView({ blockchainInfo, recentBlocks, recentTxs, networkInfo, m
               style={{ boxShadow: i === 0 ? "0 8px 40px rgba(227,35,27,0.15), inset 0 1px 0 rgba(255,255,255,0.08)" : undefined }}>
               <div className="flex items-center justify-between mb-5">
                 <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.12em]">{s.label}</span>
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(227,35,27,0.12)", color: RED }}>{s.icon}</div>
+                <IconTooltip icon={s.icon} tooltip={s.tooltip} size="md" />
               </div>
               {isLoading ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /> : (
                 <div className={`text-[2.25rem] font-semibold leading-none tracking-tight tabular-nums ${i === 0 ? "text-gradient-red" : "text-foreground"}`}>
@@ -203,7 +230,7 @@ function DashboardView({ blockchainInfo, recentBlocks, recentTxs, networkInfo, m
       {/* Blocks + Transactions */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         <GlassCard className="p-6">
-          <CardHeader title="Recent Blocks" sub="Latest 10 blocks" icon={<Layers className="w-4 h-4" />} />
+          <CardHeader title="Recent Blocks" sub="Latest 10 blocks" icon={<Layers className="w-4 h-4" />} tooltip="The most recently mined blocks on the Bitcoin network. Each block contains a batch of confirmed transactions. Click any block to explore its full contents." />
           {isLoading ? <Loading /> : (
             <motion.div className="space-y-1" variants={STAGGER.container} initial="hidden" animate="show">
               {recentBlocks.map((block: any) => (
@@ -233,7 +260,7 @@ function DashboardView({ blockchainInfo, recentBlocks, recentTxs, networkInfo, m
         </GlassCard>
 
         <GlassCard className="p-6">
-          <CardHeader title="Recent Transactions" sub="Mempool activity" icon={<Activity className="w-4 h-4" />} />
+          <CardHeader title="Recent Transactions" sub="Mempool activity" icon={<Activity className="w-4 h-4" />} tooltip="Recent Bitcoin transactions that are either confirmed in a block or still waiting in the mempool. Click any transaction to see its inputs, outputs, and fee details." />
           {isLoading ? <Loading /> : (
             <motion.div className="space-y-1" variants={STAGGER.container} initial="hidden" animate="show">
               {recentTxs.slice(0, 10).map((tx: any) => (
@@ -271,6 +298,7 @@ function DashboardView({ blockchainInfo, recentBlocks, recentTxs, networkInfo, m
             title="BTC Price — 30 Days"
             sub={btcPrice ? `$${new Intl.NumberFormat("en-US").format(btcPrice.usd)} · ${btcPrice.change24h >= 0 ? "▲" : "▼"} ${Math.abs(btcPrice.change24h).toFixed(2)}% (24h)` : "Loading…"}
             icon={<TrendingUp className="w-4 h-4" />}
+            tooltip="Bitcoin's USD price over the last 30 days, fetched live from CoinGecko. The percentage shown is the 24-hour price change. This data comes from public market data, not the Bitcoin node."
           />
           {priceHistory.length === 0 ? <Loading /> : (
             <ResponsiveContainer width="100%" height={180}>
@@ -301,7 +329,7 @@ function DashboardView({ blockchainInfo, recentBlocks, recentTxs, networkInfo, m
 
         {/* Satoshi converter */}
         <GlassCard className="p-6">
-          <CardHeader title="Converter" sub="Live BTC price" icon={<Zap className="w-4 h-4" />} />
+          <CardHeader title="Converter" sub="Live BTC price" icon={<Zap className="w-4 h-4" />} tooltip="Convert between Satoshis (the smallest unit of Bitcoin), BTC, and US Dollars in real time. 1 BTC equals 100,000,000 Satoshis. Type in any field and the others update automatically." />
           <SatoshiConverter btcPrice={btcPrice} />
         </GlassCard>
       </div>
@@ -309,7 +337,7 @@ function DashboardView({ blockchainInfo, recentBlocks, recentTxs, networkInfo, m
       {/* ── Currently Mining + Halving ── */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         <GlassCard className="p-6">
-          <CardHeader title="Currently Mining" sub="Next block estimate" icon={<Cpu className="w-4 h-4" />} />
+          <CardHeader title="Currently Mining" sub="Next block estimate" icon={<Cpu className="w-4 h-4" />} tooltip="A live estimate of the next Bitcoin block being mined right now. Shows how long ago the last block was found and how many transactions are waiting to be included." />
           <CurrentlyMining mempoolInfo={mempoolInfo} recentBlocks={recentBlocks} />
         </GlassCard>
         <HalvingCard blockHeight={blockchainInfo?.blocks} />
